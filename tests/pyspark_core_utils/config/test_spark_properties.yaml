@@ -1,0 +1,2 @@
+spark.master: yarn
+spark.app.name: template_spark_app_name
