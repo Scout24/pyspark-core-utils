@@ -29,6 +29,12 @@ def main():
     Job(__package__).execute()
 ```
 
+## How to test
+
+The tests currently run against Spark 2.4, which does not work with Python versions > 3.7 ([reference](https://issues.apache.org/jira/browse/SPARK-29536)). For that reason we expect Python 3.7 to be installed with Homebrew.
+To run the tests, first install Python 3.7 with Homebrew (`make install-python`), then run the tests with `make test`. If you're not using Homebrew you can override the `PYTHON` variable as such: `make test PYTHON=/path/to/python3`.
+
+
 ## How to contribute
 
 If you want to contribute, please submit a Pull Request! Thank you :)
