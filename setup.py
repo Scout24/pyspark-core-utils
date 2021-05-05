@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pyspark-core-utils",
-    version="1.0.0",
+    version="1.0.1",
     author="ImmobilienScout24",
     description="PySpark core utils library",
     long_description=long_description,
