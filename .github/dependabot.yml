@@ -1,0 +1,15 @@
+version: 2
+updates:
+  ## from requirements.txt
+  - package-ecosystem: 'pip'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      timezone: "Europe/Berlin"
+      time: "06:54"
+    # limit amount of concurrent PRs or disable using 0
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: 'Python'
+      prefix-development: "Python dev"
+      include: 'scope'
