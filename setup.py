@@ -22,7 +22,7 @@ setuptools.setup(
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
     python_requires=">=3.7",
-    install_requires=["importlib-resources==3.3.0",
+    install_requires=["importlib-resources==5.4.0",
                       "PyYAML==5.4",
                       "dotmap==1.3.23"]
 )
