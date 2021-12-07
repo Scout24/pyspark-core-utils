@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pyspark-core-utils",
-    version="1.0.1",
+    version="1.1.0",
     author="ImmobilienScout24",
     description="PySpark core utils library",
     long_description=long_description,
@@ -21,7 +21,7 @@ setuptools.setup(
     ],
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
-    python_requires=">=3.6",
+    python_requires=">=3.7",
     install_requires=["importlib-resources==3.3.0",
                       "PyYAML==5.4",
                       "dotmap==1.3.23"]
