@@ -32,6 +32,9 @@ def main():
 ## How to test
 To run the tests, first install Python 3.7 with Homebrew (`make install-python`), then run the tests with `make test`. If you're not using Homebrew you can override the `PYTHON` variable as such: `make test PYTHON=/path/to/python3`.
 
+## How to create a new release
+Merge the required changes to main. Then create a new release in github to be able to refer to it. The release version is referenced in the data-pipeline-template.
+
 
 ## How to contribute
 
