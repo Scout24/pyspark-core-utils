@@ -24,5 +24,5 @@ setuptools.setup(
     python_requires=">=3.7",
     install_requires=["importlib-resources==5.4.0",
                       "PyYAML==6.0",
-                      "dotmap==1.3.25"]
+                      "dotmap==1.3.26"]
 )
