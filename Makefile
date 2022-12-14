@@ -9,7 +9,7 @@ setup-environment:
 	$(PYTHON) -m virtualenv env
 	. env/bin/activate; \
 	pip3 install -r requirements.txt; \
-	pip3 install pyspark==3.1.2
+	pip3 install pyspark==3.2.0
 
 test: setup-environment
 	. env/bin/activate; \
