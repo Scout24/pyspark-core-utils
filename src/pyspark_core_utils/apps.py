@@ -36,6 +36,9 @@ class SparkApp:
 
         return SparkSession \
             .builder \
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+            .config("spark.sql.warehouse.dir","s3://is24-data-hive-warehouse/") \
             .config(conf=spark_conf) \
             .enableHiveSupport() \
             .getOrCreate()
