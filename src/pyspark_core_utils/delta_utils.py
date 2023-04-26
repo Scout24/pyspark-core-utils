@@ -98,6 +98,13 @@ def generate_delta_table(
 def extract_delta_info_from_path(
     self: SparkApp, paths: List[str]
 ) -> Tuple[str, str, List[str]]:
+    """
+    Return the common base path and partition name of input S3 paths, as well as a list of partition values
+
+    Args:
+        - `self`[required]: The SparkApp instance
+        - `paths`[required]: List of S3 paths to extract info from
+    """
     path = paths[0]
     path_reg_exp = """(.*)/(.*)=(.*)"""
     try:
@@ -111,7 +118,7 @@ def extract_delta_info_from_path(
                 dates.append(reg_match.group(3))
     except:
         raise Exception(
-            f"Can not read {",".join(paths)}: base path can not be extracted"
+            f"Can not read {','.join(paths)}: base path can not be extracted"
         )
     print(base_path)
     print(partition_name)
@@ -150,6 +157,36 @@ def read_delta_from_s3(
     paths: List[str],
     schema_struct: Optional[T.StructType] = None,
 ) -> sql.DataFrame:
+    """
+    Reads delta files from S3 into a spark dataframe
+
+    Args:
+        - `self`[required]: The SparkApp instance
+        - `sparkSession`[required]: The spark session associated with the SparkApp instance
+        - `paths`[required]: A list of fully-specified S3 paths containing the delta data. NOTE that this includes the partition value.
+        - `schema_struct`[optional]: A StructType schema, containing Structfields, specifying metadata (column name, data type, null values allowed) for all desired fields.
+
+    Examples:
+        >>> # Without schema specification (load all the fields available)
+            class Job(SparkApp):
+                def init(self):
+                    ...
+                    self.df = read_delta_from_s3(self, self.spark, ["s3://my-bucket/.../partition_date=2021-01-01"])
+        >>> # With schema specification (load only certain fields with predefined metadata)
+            import pyspark.sql.types as T
+            ...
+            class Job(SparkApp):
+                def init(self):
+                    ...
+                    self.schema = T.StructType([
+                        T.StructField("nullable_string_column", T.StringType()ß, True),
+                        T.StructField("non_null_int_column", T.IntegerType(), False),
+                        T.StructField("nullable_boolean_array_column", T.ArrayType(T.BooleanType), True),
+                        ...
+                    ])
+                    self.df = read_delta_from_s3(self, self.spark, ["s3://my-bucket/.../partition_date=2021-01-01"], schema_conf=self.schema)
+
+    """
     base_path, partition_name, dates = extract_delta_info_from_path(self, paths)
     df = (
         sparkSession.read.format("delta")
@@ -171,6 +208,36 @@ def delta_read_from_basepath(
     base_path: str,
     schema_struct: Optional[T.StructType] = None,
 ) -> sql.DataFrame:
+    """
+    Reads delta files from S3 into a spark dataframe
+
+    Args:
+        - `self`[required]: The SparkApp instance
+        - `sparkSession`[required]: The spark session associated with the SparkApp instance
+        - `base_path`[required]: The path containing all partitions of the desired data. NOTE: Does not include the specification of any one partition
+        - `schema_struct`[optional]: A StructType schema, containing Structfields, specifying metadata (column name, data type, null values allowed) for all desired fields.
+
+    Examples:
+        >>> # Without schema specification (load all the fields available)
+            class Job(SparkApp):
+                def init(self):
+                    ...
+                    self.df = delta_read_from_basepath(self, self.spark, ["s3://my-bucket/.../delta/"])
+        >>> # With schema specification (load only certain fields with predefined metadata)
+            import pyspark.sql.types as T
+            ...
+            class Job(SparkApp):
+                def init(self):
+                    ...
+                    self.schema = T.StructType([
+                        T.StructField("nullable_string_column", T.StringType()ß, True),
+                        T.StructField("non_null_int_column", T.IntegerType(), False),
+                        T.StructField("nullable_boolean_array_column", T.ArrayType(T.BooleanType), True),
+                        ...
+                    ])
+                    self.df = delta_read_from_basepath(self, self.spark, ["s3://my-bucket/.../delta/"], schema_conf=self.schema)
+
+    """
     df = sparkSession.read.format("delta").load(base_path)
     df = apply_struct_schema(df, schema_struct) if schema_struct else df
     return df
