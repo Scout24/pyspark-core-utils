@@ -81,7 +81,11 @@ def changeName(spark, file_path, new_name):
 
 
 def generate_delta_table(spark, schema_name, table_name, s3location):
-    spark.sql("create database if not exists {}".format(schema_name))
+    if cluster_uses_glue_metastore():
+        spark.sql(f"create database if not exists {schema_name} location 's3://is24-data-hive-warehouse/{schema_name}.db'")
+    else:
+        spark.sql("create database if not exists {}".format(schema_name))
+    
     qualified_table_name = f"""{schema_name}.{table_name}"""
     DeltaTable.createIfNotExists(spark) \
         .tableName(qualified_table_name) \
