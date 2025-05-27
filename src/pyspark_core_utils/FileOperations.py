@@ -1,7 +1,7 @@
 
 from delta.tables import DeltaTable
-from cluster_utils import cluster_uses_glue_metastore
-from crawler import create_crawler
+from .cluster_utils import cluster_uses_glue_metastore
+from .crawler import create_crawler
 
 def readCSVData(spark, path):
     print("Reading in csv data from {}".format(path))
