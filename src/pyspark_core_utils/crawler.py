@@ -160,7 +160,7 @@ class Crawler:
         try:
             delta_table = DeltaTable.forPath(self.spark, path)
             schema = delta_table.toDF().schema
-            columns = [self._create_glue_column(field) for field in schema.fields]
+            columns = [self._create_glue_column(f) for f in schema.fields]
             table_input = self._create_table_input(table_name, path, columns)
 
             try:
@@ -168,11 +168,19 @@ class Crawler:
                 logger.info(f"Created Glue table {db_name}.{table_name}")
                 return f"Created Glue table {db_name}.{table_name}"
             except self.glue.exceptions.AlreadyExistsException:
-                self.glue.update_table(DatabaseName=db_name, TableInput=table_input)
-                logger.info(f"Updated Glue table {db_name}.{table_name}")
-                return f"Updated Glue table {db_name}.{table_name}"
+                try:
+                    self.glue.update_table(DatabaseName=db_name, TableInput=table_input)
+                    logger.info(f"Updated Glue table {db_name}.{table_name}")
+                    return f"Updated Glue table {db_name}.{table_name}"
+                except Exception as update_error:
+                    if "updating `table_type` parameter is not supported" in str(update_error):
+                        logger.warning(f"Cannot update table parameters for {db_name}.{table_name}. Table exists but parameters cannot be modified.")
+                        return f"Table {db_name}.{table_name} exists but cannot be updated due to parameter restrictions"
+                    else:
+                        logger.error(f"Error updating Glue table: {update_error}")
+                        return update_error
             except Exception as e:
-                logger.error(f"Error creating/updating Glue table: {e}")
+                logger.error(f"Error creating Glue table: {e}")
                 return e
         except Exception as e:
             logger.error(f"Failed to process path {path}: {e}")
