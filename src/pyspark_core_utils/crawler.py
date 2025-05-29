@@ -107,7 +107,6 @@ class Crawler:
                     }
                 }
             },
-            'TableType': 'EXTERNAL_TABLE',
             'Parameters': {
                 'EXTERNAL': 'true',
                 'classification': 'delta',
