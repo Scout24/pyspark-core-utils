@@ -52,7 +52,9 @@ class Crawler:
                     f"{f.name}:{self._convert_data_type(f.dataType)}"
                     for f in data_type.elementType.fields
                 )
-                return f"array<struct<{fields}>>"
+                result = f"array<struct<{fields}>>"
+                logger.debug(f"Converted array of struct type to: {result}")
+                return result
             return f"array<{element_type}>"
         elif isinstance(data_type, StructType):
             fields = ",".join(
@@ -107,11 +109,11 @@ class Crawler:
                     }
                 }
             },
+            'TableType': 'EXTERNAL_TABLE',
             'Parameters': {
                 'EXTERNAL': 'true',
                 'classification': 'delta',
                 'delta.checkpoint.location': f'{path}/_delta_log',
-                'table_type': 'delta',
                 'spark.sql.sources.provider': 'delta',
                 'spark.sql.partitionProvider': 'catalog'
             }
