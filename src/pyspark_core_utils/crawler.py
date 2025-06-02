@@ -80,18 +80,32 @@ class Crawler:
             'Type': self._convert_data_type(field.dataType)
         }
 
-    def _create_table_input(self, table_name, path, columns):
+    def _create_table_input(self, table_name, path, columns, is_create=True):
         """Create table input configuration for Glue table creation/update.
         
         Args:
             table_name: Name of the table
             path: S3 path to the Delta table
             columns: List of Glue column definitions
+            is_create: Whether this is for creating a new table (True) or updating (False)
             
         Returns:
             dict: Table input configuration for Glue API
         """
         logger.debug(f"Creating table input for {table_name} at {path} with {len(columns)} columns")
+        
+        # Base parameters that are always included
+        parameters = {
+            'EXTERNAL': 'true',
+            'classification': 'delta',
+            'delta.checkpoint.location': f'{path}/_delta_log',
+            'spark.sql.sources.provider': 'delta',
+            'spark.sql.partitionProvider': 'catalog'
+        }
+        
+        if is_create:
+            parameters['table_type'] = 'delta'
+        
         return {
             'Name': table_name,
             'StorageDescriptor': {
@@ -110,13 +124,7 @@ class Crawler:
                 }
             },
             'TableType': 'EXTERNAL_TABLE',
-            'Parameters': {
-                'EXTERNAL': 'true',
-                'classification': 'delta',
-                'delta.checkpoint.location': f'{path}/_delta_log',
-                'spark.sql.sources.provider': 'delta',
-                'spark.sql.partitionProvider': 'catalog'
-            }
+            'Parameters': parameters,
         }
 
     def crawl_by_path(self, path):
@@ -173,16 +181,18 @@ class Crawler:
             delta_table = DeltaTable.forPath(self.spark, path)
             schema = delta_table.toDF().schema
             columns = [self._create_glue_column(f) for f in schema.fields]
-            table_input = self._create_table_input(table_name, path, columns)
 
             try:
                 logger.info(f"Attempting to create Glue table {db_name}.{table_name}")
+                table_input = self._create_table_input(table_name, path, columns, is_create=True)
                 self.glue.create_table(DatabaseName=db_name, TableInput=table_input)
                 logger.info(f"Successfully created Glue table {db_name}.{table_name}")
                 return f"Created Glue table {db_name}.{table_name}"
             except self.glue.exceptions.AlreadyExistsException:
                 logger.info(f"Table {db_name}.{table_name} already exists, attempting update")
-                self.glue.update_table(DatabaseName=db_name, TableInput=table_input)
+                # Create table input for update (without table_type parameter)
+                update_table_input = self._create_table_input(table_name, path, columns, is_create=False)
+                self.glue.update_table(DatabaseName=db_name, TableInput=update_table_input)
                 logger.info(f"Successfully updated Glue table {db_name}.{table_name}")
                 return f"Updated Glue table {db_name}.{table_name}"
             except Exception as e:
