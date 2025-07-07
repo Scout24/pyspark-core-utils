@@ -20,11 +20,15 @@ def write_partitioned_data_delta(self, dataframe, partition_name, partition_date
         crawler.crawl_by_path(target_base_path)
 
 def write_nonpartitioned_data_delta(self, dataframe, write_mode, target_base_path):
-    return dataframe \
+    dataframe \
         .write.format("delta") \
         .option("mergeSchema", "true") \
         .mode(write_mode) \
         .save(target_base_path)
+
+    if cluster_uses_glue_metastore():
+        crawler = create_crawler(self.spark)
+        crawler.crawl_by_path(target_base_path)
 
 
 def compact_delta_table_partitions(self, sparkSession, base_path, partition_name, dates, num_files):
@@ -43,10 +47,9 @@ def compact_delta_table_partitions(self, sparkSession, base_path, partition_name
 
 def generate_delta_table(self, sparkSession, schema_name, table_name, s3location):
     if cluster_uses_glue_metastore():
-        warehouse_dir = self.spark.conf.get("spark.sql.warehouse.dir", "")
         self.spark.sql(
-            f"create database if not exists {schema_name} "
-            f"location '{warehouse_dir}/{schema_name}.db'"
+            f"""create database if not exists {schema_name} 
+            location 's3://is24-data-hive-warehouse/{schema_name}.db'"""
         )
     else:
         self.spark.sql("create database if not exists {}".format(schema_name))
