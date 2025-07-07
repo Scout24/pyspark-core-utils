@@ -1,10 +1,11 @@
 from delta.tables import DeltaTable
 import re
-
+from .cluster_utils import cluster_uses_glue_metastore
+from .crawler import create_crawler
 
 def write_partitioned_data_delta(self, dataframe, partition_name, partition_dates_to_override, write_mode,
                                  target_base_path):
-    return dataframe \
+    dataframe \
         .write.partitionBy(partition_name) \
         .format("delta") \
         .option("mergeSchema", "true") \
@@ -13,7 +14,10 @@ def write_partitioned_data_delta(self, dataframe, partition_name, partition_date
         map(lambda x: "'{}'".format(x), partition_dates_to_override)))) \
         .mode(write_mode) \
         .save(target_base_path)
-
+        
+    if cluster_uses_glue_metastore():
+        crawler = create_crawler(self.spark)
+        crawler.crawl_by_path(target_base_path)
 
 def write_nonpartitioned_data_delta(self, dataframe, write_mode, target_base_path):
     return dataframe \
@@ -38,13 +42,24 @@ def compact_delta_table_partitions(self, sparkSession, base_path, partition_name
 
 
 def generate_delta_table(self, sparkSession, schema_name, table_name, s3location):
-    self.spark.sql("create database if not exists {}".format(schema_name))
+    if cluster_uses_glue_metastore():
+        self.spark.sql(
+            f"create database if not exists {schema_name} "
+            f"location 's3://is24-data-hive-warehouse/{schema_name}.db'"
+        )
+    else:
+        self.spark.sql("create database if not exists {}".format(schema_name))
+
     qualified_table_name = f"""{schema_name}.{table_name}"""
     DeltaTable.createIfNotExists(sparkSession) \
         .tableName(qualified_table_name) \
         .location(s3location) \
         .execute()
     print(f"Delta table {qualified_table_name} generated")
+        
+    if cluster_uses_glue_metastore():
+        crawler = create_crawler(self.spark)
+        crawler.process_table(schema_name, table_name, s3location)
 
 
 def extract_delta_info_from_path(self, paths):
