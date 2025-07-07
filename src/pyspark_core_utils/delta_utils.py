@@ -43,9 +43,10 @@ def compact_delta_table_partitions(self, sparkSession, base_path, partition_name
 
 def generate_delta_table(self, sparkSession, schema_name, table_name, s3location):
     if cluster_uses_glue_metastore():
+        warehouse_dir = self.spark.conf.get("spark.sql.warehouse.dir", "")
         self.spark.sql(
             f"create database if not exists {schema_name} "
-            f"location 's3://is24-data-hive-warehouse/{schema_name}.db'"
+            f"location '{warehouse_dir}/{schema_name}.db'"
         )
     else:
         self.spark.sql("create database if not exists {}".format(schema_name))

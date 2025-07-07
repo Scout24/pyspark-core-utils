@@ -19,26 +19,27 @@ class SparkApp:
         self.cleanup()
 
     def init(self):
-        self.logger.info("Starting INIT")
-
+        # self.logger.info("Starting INIT")
+        pass
+    
     def run(self):
-        self.logger.info("Starting RUN")
+        # self.logger.info("Starting RUN")
+        pass
 
     def cleanup(self):
-        self.logger.info("Starting CLEANUP")
-        self.logger.info("Stopping Spark Session")
+        # self.logger.info("Starting CLEANUP")
+        # self.logger.info("Stopping Spark Session")
         self.spark.stop()
 
     def _init_spark(self):
-        self.logger.debug("Initialising Spark Session")
-        spark_conf = configuration_service.get_spark_properties(self.app_package,
-                                                                f'config/spark-properties-{self.environment}.yaml')
+        # self.logger.debug("Initialising Spark Session")
+        # spark_conf = configuration_service.get_spark_properties(self.app_package,
+        #                                                         f'config/spark-properties-{self.environment}.yaml')
 
         return SparkSession \
             .builder \
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
             .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
             .config("spark.sql.warehouse.dir","s3://is24-data-hive-warehouse/") \
-            .config(conf=spark_conf) \
             .enableHiveSupport() \
             .getOrCreate()
