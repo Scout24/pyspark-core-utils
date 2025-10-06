@@ -127,7 +127,8 @@ def generate_delta_table(spark, schema_name, table_name, s3_location):
     )
     
 
-    spark.catalog.refreshTable(qualified_table_name)
+    
+    spark.sql(f"DESCRIBE TABLE {qualified_table_name}").collect()
     logger.info(f"Delta table {qualified_table_name} generated successfully")
 
     if cluster_uses_glue_metastore():
