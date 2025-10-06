@@ -1,6 +1,4 @@
-import time
 import logging
-import boto3
 from delta.tables import DeltaTable
 from .cluster_utils import cluster_uses_glue_metastore
 from .crawler import create_crawler
@@ -115,37 +113,6 @@ def generate_delta_table(spark, schema_name, table_name, s3_location):
             f"create database if not exists `{schema_name}` "
             f"location 's3://is24-data-hive-warehouse/{schema_name}.db'"
         )
-        
-        logger.info("Verifying database creation in Spark metastore")
-        try:
-            dbs = spark.sql(f"show databases like '{schema_name}'").collect()
-            spark_sees_db = len(dbs) > 0
-            logger.info(f"Spark metastore sees database `{schema_name}`: {spark_sees_db}")
-        except Exception as e:
-            logger.error(f"Error checking database in Spark: {e}")
-            spark_sees_db = False
-        
-        logger.info("Checking database visibility in Glue API (before delay)")
-        glue = boto3.client('glue', region_name='eu-west-1')
-        try:
-            glue.get_database(Name=schema_name)
-            logger.info(f"Glue API sees database `{schema_name}`: True (immediate)")
-        except glue.exceptions.EntityNotFoundException:
-            logger.warning(f"Glue API sees database `{schema_name}`: False (not yet propagated)")
-            
-            # Add delay to allow propagation
-            logger.info("Adding 5-second delay for Glue API propagation...")
-            time.sleep(5)
-            
-            # Check again after delay
-            logger.info("Checking database visibility in Glue API (after delay)")
-            try:
-                glue.get_database(Name=schema_name)
-                logger.info(f"Glue API sees database `{schema_name}`: True (after delay)")
-            except glue.exceptions.EntityNotFoundException:
-                logger.warning(f"Glue API sees database `{schema_name}`: False (still not visible)")
-        except Exception as e:
-            logger.error(f"Error checking database in Glue API: {e}")
     else:
         spark.sql(f"create database if not exists `{schema_name}`")
 
@@ -158,6 +125,10 @@ def generate_delta_table(spark, schema_name, table_name, s3_location):
         .location(s3_location)
         .execute()
     )
+    
+
+    count = spark.table(qualified_table_name).count()
+    logger.info(f"Delta table {qualified_table_name} created with {count} rows")
     
     logger.info(f"Delta table {qualified_table_name} generated successfully")
 

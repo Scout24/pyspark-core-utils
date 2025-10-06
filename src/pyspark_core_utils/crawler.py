@@ -95,14 +95,20 @@ class Crawler:
             
         Returns:
             The result of the boto3 call
-            
-        Raises:
-            Exception: If all retries are exhausted
         """
+
+        non_retryable_exceptions = (
+            self.glue.exceptions.AlreadyExistsException,
+            self.glue.exceptions.InvalidInputException,
+        )
+        
         last_exception = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 return func(*args, **kwargs)
+            except non_retryable_exceptions as e:
+                logger.debug(f"Non-retryable error encountered: {e}")
+                raise
             except Exception as e:
                 last_exception = e
                 if attempt < self.max_retries:
