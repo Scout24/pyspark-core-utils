@@ -107,13 +107,13 @@ def generate_delta_table(spark, schema_name, table_name, s3_location):
     """Generate a Delta table with the specified schema, table name, and S3 location."""
     if cluster_uses_glue_metastore():
         spark.sql(
-            f"create database if not exists {schema_name} "
+            f"create database if not exists `{schema_name}` "
             f"location 's3://is24-data-hive-warehouse/{schema_name}.db'"
         )
     else:
-        spark.sql(f"create database if not exists {schema_name}")
+        spark.sql(f"create database if not exists `{schema_name}`")
 
-    qualified_table_name = f"{schema_name}.{table_name}"
+    qualified_table_name = f"`{schema_name}`.`{table_name}`"
     
     (
         DeltaTable.createIfNotExists(spark)
