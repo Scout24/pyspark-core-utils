@@ -1,5 +1,6 @@
 import boto3
 import logging
+import time
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, ArrayType
 from delta.tables import DeltaTable
@@ -15,16 +16,20 @@ class Crawler:
     Glue table definitions based on Delta table schemas.
     """
     
-    def __init__(self, spark: SparkSession, glue_client=None):
+    def __init__(self, spark: SparkSession, glue_client=None, max_retries=3, retry_delay=2):
         """Initialize the Crawler with Spark session and Glue client.
         
         Args:
             spark: SparkSession instance for reading Delta tables
             glue_client: Optional boto3 Glue client, creates default if None
+            max_retries: Maximum number of retries for Glue API calls (default: 3)
+            retry_delay: Delay in seconds between retries (default: 2)
         """
         logger.info("Initializing Crawler with Spark session")
         self.spark = spark
         self.glue = glue_client or boto3.client('glue', region_name='eu-west-1')
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self.spark_to_glue_type = {
             "integer": "int",
             "long": "bigint",
@@ -79,6 +84,71 @@ class Crawler:
             'Name': field.name,
             'Type': self._convert_data_type(field.dataType)
         }
+
+    def _retry_boto3_call(self, func, *args, **kwargs):
+        """Retry a boto3 call with simple counter-based retry logic.
+        
+        Args:
+            func: The boto3 function to call
+            *args: Positional arguments to pass to the function
+            **kwargs: Keyword arguments to pass to the function
+            
+        Returns:
+            The result of the boto3 call
+        """
+
+        non_retryable_exceptions = (
+            self.glue.exceptions.AlreadyExistsException,
+            self.glue.exceptions.InvalidInputException,
+        )
+        
+        last_exception = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+            except non_retryable_exceptions as e:
+                logger.debug(f"Non-retryable error encountered: {e}")
+                raise
+            except Exception as e:
+                last_exception = e
+                if attempt < self.max_retries:
+                    logger.warning(f"Attempt {attempt}/{self.max_retries} failed: {e}. Retrying in {self.retry_delay}s...")
+                    time.sleep(self.retry_delay)
+                else:
+                    logger.error(f"All {self.max_retries} attempts failed. Last error: {e}")
+        raise last_exception
+
+    def _ensure_database_exists(self, db_name):
+        """Ensure that the Glue database exists, create it if it doesn't.
+        
+        Args:
+            db_name: Name of the database to check/create
+            
+        Returns:
+            bool: True if database exists or was created successfully
+        """
+        try:
+            self._retry_boto3_call(self.glue.get_database, Name=db_name)
+            logger.info(f"Database {db_name} already exists")
+            return True
+        except self.glue.exceptions.EntityNotFoundException:
+            logger.info(f"Database {db_name} does not exist, attempting to create it")
+            try:
+                self._retry_boto3_call(
+                    self.glue.create_database,
+                    DatabaseInput={
+                        'Name': db_name,
+                        'LocationUri': f's3://is24-data-hive-warehouse/{db_name}.db'
+                    }
+                )
+                logger.info(f"Successfully created database {db_name} at s3://is24-data-hive-warehouse/{db_name}.db")
+                return True
+            except self.glue.exceptions.AlreadyExistsException:
+                logger.info(f"Database {db_name} was created by another process")
+                return True
+        except Exception as e:
+            logger.error(f"Error ensuring database {db_name} exists: {e}")
+            raise
 
     def _create_table_input(self, table_name, path, columns, is_create=True):
         """Create table input configuration for Glue table creation/update.
@@ -168,39 +238,38 @@ class Crawler:
             path: S3 path to the Delta table
             
         Returns:
-            str or Exception: Success message or exception if error occurs
+            str: Success message
         """
         logger.info(f"Processing table {db_name}.{table_name} at path {path}")
         
         if not path.startswith("s3://"):
             msg = f"Invalid S3 path: {path}"
             logger.error(msg)
-            return Exception(msg)
+            raise ValueError(msg)
 
         try:
             delta_table = DeltaTable.forPath(self.spark, path)
             schema = delta_table.toDF().schema
             columns = [self._create_glue_column(f) for f in schema.fields]
 
+            # Ensure database exists before creating table
+            self._ensure_database_exists(db_name)
+
             try:
                 logger.info(f"Attempting to create Glue table {db_name}.{table_name}")
                 table_input = self._create_table_input(table_name, path, columns, is_create=True)
-                self.glue.create_table(DatabaseName=db_name, TableInput=table_input)
+                self._retry_boto3_call(self.glue.create_table, DatabaseName=db_name, TableInput=table_input)
                 logger.info(f"Successfully created Glue table {db_name}.{table_name}")
                 return f"Created Glue table {db_name}.{table_name}"
             except self.glue.exceptions.AlreadyExistsException:
                 logger.info(f"Table {db_name}.{table_name} already exists, attempting update")
-                # Create table input for update (without table_type parameter)
                 update_table_input = self._create_table_input(table_name, path, columns, is_create=False)
-                self.glue.update_table(DatabaseName=db_name, TableInput=update_table_input)
+                self._retry_boto3_call(self.glue.update_table, DatabaseName=db_name, TableInput=update_table_input)
                 logger.info(f"Successfully updated Glue table {db_name}.{table_name}")
                 return f"Updated Glue table {db_name}.{table_name}"
-            except Exception as e:
-                logger.error(f"Error creating/updating Glue table {db_name}.{table_name}: {e}")
-                return e
         except Exception as e:
-            logger.error(f"Failed to process Delta table at path {path}: {e}")
-            return e
+            logger.error(f"Failed to process table {db_name}.{table_name}: {e}")
+            raise
 
 
 def create_crawler(spark):
