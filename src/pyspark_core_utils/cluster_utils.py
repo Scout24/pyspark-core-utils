@@ -126,6 +126,68 @@ def is_glue_metastore(cluster_id):
         logger.error(f"Error checking if cluster {cluster_id} uses Glue metastore: {e}")
         return False
 
+def get_cluster_catalog_id(cluster_id):
+    """Get the Glue catalog ID from the given EMR cluster configuration.
+    
+    Args:
+        cluster_id: The EMR cluster ID to check.
+        
+    Returns:
+        str or None: The catalog ID if found, None otherwise.
+    """
+    logger.info(f"Getting catalog ID for cluster {cluster_id}")
+    
+    try:
+        emr = boto3.client("emr")
+        response = _retry_boto3_call(emr.describe_cluster, ClusterId=cluster_id)
+        cluster = response["Cluster"]
+        
+        logger.debug(f"Successfully retrieved cluster configuration for {cluster_id}")
+        
+        configurations = cluster.get("Configurations", [])
+        logger.debug(f"Found {len(configurations)} configuration entries")
+        
+        for config in configurations:
+            if config.get("Classification") == "hive-site":
+                logger.debug("Found hive-site configuration")
+                properties = config.get("Properties", {})
+                
+                # Get the catalog ID from cluster configuration
+                catalog_id = properties.get("hive.metastore.glue.catalogid")
+                
+                if catalog_id:
+                    logger.info(f"Found catalog ID: {catalog_id} for cluster {cluster_id}")
+                    return catalog_id
+                    
+        logger.info(f"No catalog ID found for cluster {cluster_id}")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error getting catalog ID for cluster {cluster_id}: {e}")
+        return None
+
+
+def get_current_cluster_catalog_id():
+    """Get the Glue catalog ID from the current cluster configuration.
+    
+    Returns:
+        str or None: The catalog ID if found, None otherwise.
+    """
+    logger.info("Getting catalog ID for current cluster")
+    
+    cluster_id = get_current_cluster_id()
+    if not cluster_id:
+        logger.warning("Could not determine cluster ID, cannot get catalog ID")
+        return None
+    
+    catalog_id = get_cluster_catalog_id(cluster_id)
+    if catalog_id:
+        logger.info(f"Current cluster catalog ID: {catalog_id}")
+    else:
+        logger.info("Current cluster has no catalog ID configured")
+    return catalog_id
+
+
 def cluster_uses_glue_metastore():
     """Check if the current cluster uses Glue metastore.
     
