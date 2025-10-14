@@ -127,10 +127,10 @@ def is_glue_metastore(cluster_id):
         return False
 
 def get_cluster_catalog_id(cluster_id):
-    """Get the Glue catalog ID from the given EMR cluster configuration.
+    """Get the Glue catalog ID from the EMR cluster configuration.
     
     Args:
-        cluster_id: The EMR cluster ID to check.
+        cluster_id: The EMR cluster ID.
         
     Returns:
         str or None: The catalog ID if found, None otherwise.
@@ -172,13 +172,16 @@ def get_current_cluster_catalog_id():
     
     Returns:
         str or None: The catalog ID if found, None otherwise.
+        
+    Raises:
+        RuntimeError: If cluster ID cannot be determined.
     """
     logger.info("Getting catalog ID for current cluster")
     
     cluster_id = get_current_cluster_id()
     if not cluster_id:
-        logger.warning("Could not determine cluster ID, cannot get catalog ID")
-        return None
+        logger.error("Could not determine cluster ID, cannot get catalog ID")
+        raise RuntimeError("Failed to determine EMR cluster ID.")
     
     catalog_id = get_cluster_catalog_id(cluster_id)
     if catalog_id:
@@ -193,13 +196,16 @@ def cluster_uses_glue_metastore():
     
     Returns:
         bool: True if current cluster uses Glue metastore, False otherwise.
+        
+    Raises:
+        RuntimeError: If cluster ID cannot be determined (critical failure in EMR environment).
     """
     logger.info("Checking if current cluster uses Glue metastore")
     
     cluster_id = get_current_cluster_id()
     if not cluster_id:
-        logger.warning("Could not determine cluster ID, assuming no Glue metastore")
-        return False
+        logger.error("Could not determine cluster ID, cannot check metastore configuration")
+        raise RuntimeError("Failed to determine EMR cluster ID.")
     
     result = is_glue_metastore(cluster_id)
     logger.info(f"Current cluster uses Glue metastore: {result}")

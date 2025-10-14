@@ -25,7 +25,7 @@ class Crawler:
             glue_client: Optional boto3 Glue client, creates default if None
             max_retries: Maximum number of retries for Glue API calls (default: 3)
             retry_delay: Delay in seconds between retries (default: 2)
-            catalog_id: Optional Glue catalog ID. If None, will attempt to get from cluster config
+            catalog_id: Glue catalog ID.
         """
         logger.info("Initializing Crawler with Spark session")
         self.spark = spark
@@ -59,7 +59,7 @@ class Crawler:
             **kwargs: Additional keyword arguments for the Glue API call
             
         Returns:
-            dict: API kwargs with CatalogId included if available
+            dict: API kwargs with CatalogId included
         """
         if self.catalog_id:
             kwargs['CatalogId'] = self.catalog_id
@@ -237,7 +237,10 @@ class Crawler:
             path: S3 path to search for
             
         Returns:
-            str or None: Result message if table found and processed, None otherwise
+            str: Result message when table found and processed
+            
+        Raises:
+            ValueError: If no existing Glue table is found for the given path
         """
         logger.info(f"Starting crawl for path: {path}")
         target_path = path.rstrip('/')
@@ -255,8 +258,8 @@ class Crawler:
                         if location.rstrip('/') == target_path:
                             logger.info(f"Found table {db_name}.{table['Name']} at {path}")
                             return self.process_table(db_name, table['Name'], path)
-        logger.info(f"No existing Glue table found for path {path}")
-        return None
+        logger.error(f"No existing Glue table found for path {path}")
+        raise ValueError(f"No existing Glue table found with location '{path}'.")
 
     def process_table(self, db_name, table_name, path):
         """Process a Delta table and create/update corresponding Glue table.
