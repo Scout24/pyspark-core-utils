@@ -259,7 +259,6 @@ class Crawler:
                             logger.info(f"Found table {db_name}.{table['Name']} at {path}")
                             return self.process_table(db_name, table['Name'], path)
         logger.error(f"No existing Glue table found for path {path}")
-        raise ValueError(f"No existing Glue table found with location '{path}'.")
 
     def process_table(self, db_name, table_name, path):
         """Process a Delta table and create/update corresponding Glue table.
