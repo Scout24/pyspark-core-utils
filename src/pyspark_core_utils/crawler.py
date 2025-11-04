@@ -4,6 +4,7 @@ import time
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, ArrayType
 from delta.tables import DeltaTable
+from .cluster_utils import get_current_cluster_catalog_id
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -16,7 +17,7 @@ class Crawler:
     Glue table definitions based on Delta table schemas.
     """
     
-    def __init__(self, spark: SparkSession, glue_client=None, max_retries=3, retry_delay=2):
+    def __init__(self, spark: SparkSession, glue_client=None, max_retries=3, retry_delay=2, catalog_id=None):
         """Initialize the Crawler with Spark session and Glue client.
         
         Args:
@@ -24,12 +25,23 @@ class Crawler:
             glue_client: Optional boto3 Glue client, creates default if None
             max_retries: Maximum number of retries for Glue API calls (default: 3)
             retry_delay: Delay in seconds between retries (default: 2)
+            catalog_id: Glue catalog ID.
         """
         logger.info("Initializing Crawler with Spark session")
         self.spark = spark
         self.glue = glue_client or boto3.client('glue', region_name='eu-west-1')
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        
+        if catalog_id:
+            self.catalog_id = catalog_id
+            logger.info(f"Using provided catalog ID: {catalog_id}")
+        else:
+            self.catalog_id = get_current_cluster_catalog_id()
+            if self.catalog_id:
+                logger.info(f"Retrieved catalog ID from cluster: {self.catalog_id}")
+            else:
+                logger.info("No catalog ID configured - will use default AWS account catalog")
         self.spark_to_glue_type = {
             "integer": "int",
             "long": "bigint",
@@ -39,6 +51,20 @@ class Crawler:
             "timestamp": "timestamp"
         }
         logger.info("Crawler initialization complete")
+
+    def _get_glue_kwargs(self, **kwargs):
+        """Get Glue API kwargs with CatalogId if available.
+        
+        Args:
+            **kwargs: Additional keyword arguments for the Glue API call
+            
+        Returns:
+            dict: API kwargs with CatalogId included
+        """
+        if self.catalog_id:
+            kwargs['CatalogId'] = self.catalog_id
+            logger.debug(f"Adding CatalogId {self.catalog_id} to Glue API call")
+        return kwargs
 
     def _convert_data_type(self, data_type):
         """Convert Spark data types to Glue-compatible data types.
@@ -128,18 +154,22 @@ class Crawler:
             bool: True if database exists or was created successfully
         """
         try:
-            self._retry_boto3_call(self.glue.get_database, Name=db_name)
+            get_db_kwargs = self._get_glue_kwargs(Name=db_name)
+            self._retry_boto3_call(self.glue.get_database, **get_db_kwargs)
             logger.info(f"Database {db_name} already exists")
             return True
         except self.glue.exceptions.EntityNotFoundException:
             logger.info(f"Database {db_name} does not exist, attempting to create it")
             try:
-                self._retry_boto3_call(
-                    self.glue.create_database,
+                create_db_kwargs = self._get_glue_kwargs(
                     DatabaseInput={
                         'Name': db_name,
                         'LocationUri': f's3://is24-data-hive-warehouse/{db_name}.db'
                     }
+                )
+                self._retry_boto3_call(
+                    self.glue.create_database,
+                    **create_db_kwargs
                 )
                 logger.info(f"Successfully created database {db_name} at s3://is24-data-hive-warehouse/{db_name}.db")
                 return True
@@ -207,24 +237,28 @@ class Crawler:
             path: S3 path to search for
             
         Returns:
-            str or None: Result message if table found and processed, None otherwise
+            str: Result message when table found and processed
+            
+        Raises:
+            ValueError: If no existing Glue table is found for the given path
         """
         logger.info(f"Starting crawl for path: {path}")
         target_path = path.rstrip('/')
 
         paginator = self.glue.get_paginator('get_databases')
-        for page in paginator.paginate():
+        db_paginate_kwargs = self._get_glue_kwargs()
+        for page in paginator.paginate(**db_paginate_kwargs):
             for db in page['DatabaseList']:
                 db_name = db['Name']
                 table_paginator = self.glue.get_paginator('get_tables')
-                for table_page in table_paginator.paginate(DatabaseName=db_name):
+                table_paginate_kwargs = self._get_glue_kwargs(DatabaseName=db_name)
+                for table_page in table_paginator.paginate(**table_paginate_kwargs):
                     for table in table_page['TableList']:
                         location = table.get('StorageDescriptor', {}).get('Location', '')
                         if location.rstrip('/') == target_path:
                             logger.info(f"Found table {db_name}.{table['Name']} at {path}")
                             return self.process_table(db_name, table['Name'], path)
-        logger.info(f"No existing Glue table found for path {path}")
-        return None
+        logger.error(f"No existing Glue table found for path {path}")
 
     def process_table(self, db_name, table_name, path):
         """Process a Delta table and create/update corresponding Glue table.
@@ -258,13 +292,15 @@ class Crawler:
             try:
                 logger.info(f"Attempting to create Glue table {db_name}.{table_name}")
                 table_input = self._create_table_input(table_name, path, columns, is_create=True)
-                self._retry_boto3_call(self.glue.create_table, DatabaseName=db_name, TableInput=table_input)
+                create_table_kwargs = self._get_glue_kwargs(DatabaseName=db_name, TableInput=table_input)
+                self._retry_boto3_call(self.glue.create_table, **create_table_kwargs)
                 logger.info(f"Successfully created Glue table {db_name}.{table_name}")
                 return f"Created Glue table {db_name}.{table_name}"
             except self.glue.exceptions.AlreadyExistsException:
                 logger.info(f"Table {db_name}.{table_name} already exists, attempting update")
                 update_table_input = self._create_table_input(table_name, path, columns, is_create=False)
-                self._retry_boto3_call(self.glue.update_table, DatabaseName=db_name, TableInput=update_table_input)
+                update_table_kwargs = self._get_glue_kwargs(DatabaseName=db_name, TableInput=update_table_input)
+                self._retry_boto3_call(self.glue.update_table, **update_table_kwargs)
                 logger.info(f"Successfully updated Glue table {db_name}.{table_name}")
                 return f"Updated Glue table {db_name}.{table_name}"
         except Exception as e:
@@ -272,15 +308,16 @@ class Crawler:
             raise
 
 
-def create_crawler(spark):
+def create_crawler(spark, catalog_id=None):
     """Create a Crawler instance with default Glue client.
     
     Args:
         spark: SparkSession instance
+        catalog_id: Optional Glue catalog ID. If None, will attempt to get from cluster config
         
     Returns:
         Crawler: Configured Crawler instance with eu-west-1 Glue client
     """
     logger.info("Creating Crawler with default Glue client")
     glue_client = boto3.client("glue", region_name="eu-west-1")
-    return Crawler(spark, glue_client)
+    return Crawler(spark, glue_client, catalog_id=catalog_id)
