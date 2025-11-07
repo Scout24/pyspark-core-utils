@@ -1,4 +1,7 @@
 import logging
+
+from pyspark.sql.dataframe import DataFrame
+from pyspark.sql.session import SparkSession
 from delta.tables import DeltaTable
 from .cluster_utils import cluster_uses_glue_metastore
 from .crawler import create_crawler
@@ -35,7 +38,7 @@ def read_data_delta(spark, path):
 
 
 def write_data_delta(
-    spark, df, coalesce=1, partition_column=None, path=None, mode="overwrite"
+    spark: SparkSession, df: DataFrame, coalesce: int = 1, partition_column: str = None, path: str = None, mode: str = "overwrite"
 ):
     """Write DataFrame as Delta format to the specified path."""
     logger.info(f"Writing delta data to {path}")
