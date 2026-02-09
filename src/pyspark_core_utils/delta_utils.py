@@ -4,7 +4,7 @@ from .cluster_utils import cluster_uses_glue_metastore
 from .crawler import create_crawler
 
 def write_partitioned_data_delta(self, dataframe, partition_name, partition_dates_to_override, write_mode,
-                                 target_base_path):
+                                 target_base_path, vacuum_table=True):
     dataframe \
         .write.partitionBy(partition_name) \
         .format("delta") \
@@ -19,7 +19,11 @@ def write_partitioned_data_delta(self, dataframe, partition_name, partition_date
         crawler = create_crawler(self.spark)
         crawler.crawl_by_path(target_base_path)
 
-def write_nonpartitioned_data_delta(self, dataframe, write_mode, target_base_path):
+    if vacuum_table:
+        vacuum_delta_table(self.spark, target_base_path)
+
+
+def write_nonpartitioned_data_delta(self, dataframe, write_mode, target_base_path, vacuum_table=True):
     dataframe \
         .write.format("delta") \
         .option("mergeSchema", "true") \
@@ -29,6 +33,9 @@ def write_nonpartitioned_data_delta(self, dataframe, write_mode, target_base_pat
     if cluster_uses_glue_metastore():
         crawler = create_crawler(self.spark)
         crawler.crawl_by_path(target_base_path)
+
+    if vacuum_table:
+        vacuum_delta_table(self.spark, target_base_path)
 
 
 def compact_delta_table_partitions(self, sparkSession, base_path, partition_name, dates, num_files):
@@ -103,3 +110,7 @@ def read_delta_table(self, sparkSession, schema_name, table_name, partition_name
     qualified_table_name = f"""{schema_name}.{table_name}"""
     return sparkSession.read.table(qualified_table_name) \
         .where("{} in ({})".format(partition_name, ', '.join(map(lambda x: "'{}'".format(x), partition_dates))))
+
+def vacuum_delta_table(sparkSession, base_path, retention_hours=168):
+    deltaTable = DeltaTable.forPath(sparkSession, base_path)
+    deltaTable.vacuum(retentionHours=retention_hours)

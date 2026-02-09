@@ -5,6 +5,7 @@ from pyspark.sql.session import SparkSession
 from delta.tables import DeltaTable
 from .cluster_utils import cluster_uses_glue_metastore
 from .crawler import create_crawler
+from .delta_utils import vacuum_delta_table
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def read_data_delta(spark, path):
 
 
 def write_data_delta(
-    spark: SparkSession, df: DataFrame, coalesce: int = 1, partition_column: str = None, path: str = None, mode: str = "overwrite"
+    spark: SparkSession, df: DataFrame, coalesce: int = 1, partition_column: str = None, path: str = None, mode: str = "overwrite", vacuum_table: bool= True
 ):
     """Write DataFrame as Delta format to the specified path."""
     logger.info(f"Writing delta data to {path}")
@@ -59,6 +60,9 @@ def write_data_delta(
     if cluster_uses_glue_metastore():
         crawler = create_crawler(spark)
         crawler.crawl_by_path(path)
+
+    if vacuum_table:
+        vacuum_delta_table(spark, path)
 
 
 def set_bucket_owner_full_access(spark):
